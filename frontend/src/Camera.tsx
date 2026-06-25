@@ -21,6 +21,7 @@ type Track = {
   text: string | null
   votes: Record<string, number>
   lastSeen: number                                     // Date.now() of the last matched detection
+  seen: number                                         // # of detections matched (confirmation gate)
 }
 
 type Det = { bbox: number[]; text: string | null; conf: number }
@@ -160,14 +161,14 @@ export default function Camera({ base, t }: { base: string; t: T }) {
         if (dist < Math.max(bw, trk.tw) && dist < bestDist) { best = trk; bestDist = dist }
       }
       if (best) {
-        Object.assign(best, { tx: bx, ty: by, tw: bw, th: bh, lastSeen: now })
+        Object.assign(best, { tx: bx, ty: by, tw: bw, th: bh, lastSeen: now, seen: best.seen + 1 })
         if (d.text) {
           best.votes[d.text] = (best.votes[d.text] || 0) + 1
           best.text = Object.entries(best.votes).sort((a, b) => b[1] - a[1])[0][0]
         }
       } else {
         tracks.push({ x: bx, y: by, w: bw, h: bh, tx: bx, ty: by, tw: bw, th: bh,
-                      text: d.text, votes: d.text ? { [d.text]: 1 } : {}, lastSeen: now })
+                      text: d.text, votes: d.text ? { [d.text]: 1 } : {}, lastSeen: now, seen: 1 })
       }
     }
     // drop tracks not seen for LINGER_MS (time-based, so cadence-independent)
@@ -218,6 +219,9 @@ export default function Camera({ base, t }: { base: string; t: T }) {
         for (const trk of tracksRef.current) {
           const since = now - trk.lastSeen
           if (since > LINGER_MS) continue
+          // confirmation gate: a detect-only (unread) box must persist across ≥2 detections
+          // before we draw it, so transient one-frame boxes don't jump all over the plate.
+          if (!trk.text && trk.seen < 2) continue
           // fade out over the last FADE_MS before removal so the final reading stays visible
           const alpha = since <= LINGER_MS - FADE_MS ? 1 : Math.max(0, (LINGER_MS - since) / FADE_MS)
           trk.x += (trk.tx - trk.x) * 0.35; trk.y += (trk.ty - trk.y) * 0.35

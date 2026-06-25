@@ -11,8 +11,21 @@ from .detection import detect_candidates
 from .ocr import GlyphClassifier, load_glyph_dataset
 from .rectify import rectify
 from .segmentation import segment
-from .types import CharResult, PlateResult
+from .types import Candidate, CharResult, PlateResult
 from .validation import validate
+
+
+def _fallback_candidates(image_bgr) -> list[Candidate]:
+    """Whole-frame + margin-trimmed bands, for images where the plate IS (most of) the frame
+    -- cropped plate uploads, close-up camera frames, plate renderings -- and the sub-region
+    detector finds no tight box. Used read-only (only surfaced if they yield a valid plate)."""
+    h, w = image_bgr.shape[:2]
+    t1, t2 = int(0.08 * h), int(0.15 * h)
+    return [
+        Candidate(bbox=(0, 0, w, h), score=0.0, cue="full", quad=None),
+        Candidate(bbox=(0, t1, w, h - 2 * t1), score=0.0, cue="full", quad=None),
+        Candidate(bbox=(0, t2, w, h - 2 * t2), score=0.0, cue="full", quad=None),
+    ]
 
 
 class ALPR:
@@ -29,6 +42,15 @@ class ALPR:
             except cv2.error:
                 # one malformed candidate must not abort the whole image
                 results.append(PlateResult(cand.bbox, cand.quad, None, None, 0.0, []))
+        # Whole-frame fallbacks for plate-dominant images. Read-only: surfaced ONLY when they
+        # produce a valid plate, so we never draw a frame-sized detect-only box (e.g. on camera).
+        for cand in _fallback_candidates(image_bgr):
+            try:
+                r = self._read_candidate(image_bgr, cand)
+            except cv2.error:
+                continue
+            if r.plate_text is not None:
+                results.append(r)
         return _dedup(results)
 
     def _read_candidate(self, image_bgr, cand) -> PlateResult:
