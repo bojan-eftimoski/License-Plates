@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import type { T } from './i18n'
 
 /**
  * Live-camera AR overlay (best-effort). The graded classical detector runs on the BACKEND, so
@@ -11,6 +12,8 @@ import { useEffect, useRef, useState } from 'react'
  */
 const LINGER_MS = 3000 // keep a box this long after it was last detected
 const FADE_MS = 1500 // start fading this long before removal
+const READ_COLOR = '#5f7d3b' // olive — confident read (harmonised with the editorial palette)
+const DETECT_COLOR = '#b8432f' // brick — detected but unread
 
 type Track = {
   x: number; y: number; w: number; h: number          // drawn (smoothed) box, in video px
@@ -22,7 +25,7 @@ type Track = {
 
 type Det = { bbox: number[]; text: string | null; conf: number }
 
-export default function Camera({ base }: { base: string }) {
+export default function Camera({ base, t }: { base: string; t: T }) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const tracksRef = useRef<Track[]>([])
@@ -45,11 +48,11 @@ export default function Camera({ base }: { base: string }) {
   async function start() {
     setErr(null)
     if (!window.isSecureContext) {
-      setErr('Camera needs a secure (HTTPS) page. Open the github.io URL, not an http:// address or IP.')
+      setErr(t('cam_insecure'))
       return
     }
     if (!navigator.mediaDevices?.getUserMedia) {
-      setErr('This browser blocks camera access here. Use Safari (iOS) or Chrome/Edge (desktop) on the HTTPS site.')
+      setErr(t('cam_unsupported'))
       return
     }
     setStarting(true)
@@ -88,13 +91,13 @@ export default function Camera({ base }: { base: string }) {
     setStarting(false)
     const n = lastErr?.name
     if (n === 'NotReadableError' || n === 'AbortError')
-      setErr('Camera is busy or blocked. Close other apps/tabs using it (Zoom, Teams, Windows Camera, Photo Booth), then check your OS camera privacy setting and retry. On Windows: Settings → Privacy & security → Camera → on.')
+      setErr(t('cam_busy'))
     else if (n === 'NotAllowedError' || n === 'SecurityError')
-      setErr('Camera permission was denied. iPhone: tap "aA" in Safari\'s address bar → Website Settings → Camera → Allow, then reload. Desktop: click the camera icon in the address bar → Allow.')
+      setErr(t('cam_denied'))
     else if (n === 'NotFoundError' || n === 'OverconstrainedError')
-      setErr('No camera was found on this device. Connect one (or use the Upload tab) and retry.')
+      setErr(t('cam_none'))
     else
-      setErr(`Camera error: ${n || lastErr?.message || 'unknown'}. Needs HTTPS + an available camera.`)
+      setErr(t('cam_generic', { n: n || lastErr?.message || 'unknown' }))
   }
 
   function stopStream() {
@@ -117,9 +120,9 @@ export default function Camera({ base }: { base: string }) {
       const cx = bx + bw / 2, cy = by + bh / 2
       let best: Track | null = null
       let bestDist = Infinity
-      for (const t of tracks) {
-        const dist = Math.hypot(cx - (t.tx + t.tw / 2), cy - (t.ty + t.th / 2))
-        if (dist < Math.max(bw, t.tw) && dist < bestDist) { best = t; bestDist = dist }
+      for (const trk of tracks) {
+        const dist = Math.hypot(cx - (trk.tx + trk.tw / 2), cy - (trk.ty + trk.th / 2))
+        if (dist < Math.max(bw, trk.tw) && dist < bestDist) { best = trk; bestDist = dist }
       }
       if (best) {
         Object.assign(best, { tx: bx, ty: by, tw: bw, th: bh, lastSeen: now })
@@ -133,7 +136,7 @@ export default function Camera({ base }: { base: string }) {
       }
     }
     // drop tracks not seen for LINGER_MS (time-based, so cadence-independent)
-    tracksRef.current = tracks.filter((t) => now - t.lastSeen < LINGER_MS)
+    tracksRef.current = tracks.filter((trk) => now - trk.lastSeen < LINGER_MS)
   }
 
   // throttled backend detection
@@ -173,25 +176,25 @@ export default function Camera({ base }: { base: string }) {
         const ctx = c.getContext('2d')!
         ctx.clearRect(0, 0, c.width, c.height)
         const now = Date.now()
-        for (const t of tracksRef.current) {
-          const since = now - t.lastSeen
+        for (const trk of tracksRef.current) {
+          const since = now - trk.lastSeen
           if (since > LINGER_MS) continue
           // fade out over the last FADE_MS before removal so the final reading stays visible
           const alpha = since <= LINGER_MS - FADE_MS ? 1 : Math.max(0, (LINGER_MS - since) / FADE_MS)
-          t.x += (t.tx - t.x) * 0.35; t.y += (t.ty - t.y) * 0.35
-          t.w += (t.tw - t.w) * 0.35; t.h += (t.th - t.h) * 0.35
-          const x = t.x * sx, y = t.y * sy, w = t.w * sx, h = t.h * sy
+          trk.x += (trk.tx - trk.x) * 0.35; trk.y += (trk.ty - trk.y) * 0.35
+          trk.w += (trk.tw - trk.w) * 0.35; trk.h += (trk.th - trk.h) * 0.35
+          const x = trk.x * sx, y = trk.y * sy, w = trk.w * sx, h = trk.h * sy
           ctx.globalAlpha = alpha
           ctx.lineWidth = 3
-          ctx.strokeStyle = t.text ? '#22c55e' : '#ef4444'
+          ctx.strokeStyle = trk.text ? READ_COLOR : DETECT_COLOR
           ctx.strokeRect(x, y, w, h)
-          if (t.text) {
+          if (trk.text) {
             ctx.font = 'bold 20px ui-monospace, monospace'
-            const tw = ctx.measureText(t.text).width + 12
-            ctx.fillStyle = '#22c55e'
+            const tw = ctx.measureText(trk.text).width + 12
+            ctx.fillStyle = READ_COLOR
             ctx.fillRect(x, y - 26, tw, 24)
-            ctx.fillStyle = '#06240f'
-            ctx.fillText(t.text, x + 6, y - 8)
+            ctx.fillStyle = '#fbf7ed'
+            ctx.fillText(trk.text, x + 6, y - 8)
           }
           ctx.globalAlpha = 1
         }
@@ -212,12 +215,9 @@ export default function Camera({ base }: { base: string }) {
         <canvas ref={canvasRef} />
       </div>
       <button className="primary" onClick={on ? stop : start} disabled={starting}>
-        {starting ? 'Opening camera…' : on ? 'Stop' : 'Start camera'}
+        {starting ? t('cam_opening') : on ? t('cam_stop') : t('cam_start')}
       </button>
-      <p className="muted">
-        Point the rear camera at a Macedonian plate. Detection runs on the backend ~2×/s; the label glides
-        and locks via multi-frame voting, and lingers ~3s after the plate leaves frame. Works best on clear, close plates.
-      </p>
+      <p className="muted">{t('cam_hint')}</p>
     </section>
   )
 }

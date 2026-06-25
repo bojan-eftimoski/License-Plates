@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
+import type { T } from './i18n'
 
 type Plate = { plate_text: string | null; region: string | null; confidence: number; frame?: number }
 type AnalyzeResult = { type: 'image' | 'video'; plates: Plate[]; annotated?: string | null; frames?: number }
 
-export default function Upload({ base }: { base: string }) {
+export default function Upload({ base, t }: { base: string; t: T }) {
   const [file, setFile] = useState<File | null>(null)
   const [preview, setPreview] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -36,7 +37,7 @@ export default function Upload({ base }: { base: string }) {
     setDragOver(false)
     const f = e.dataTransfer.files?.[0]
     if (f && (f.type.startsWith('image') || f.type.startsWith('video'))) pick(f)
-    else if (f) setError('Drop an image or video file.')
+    else if (f) setError(t('drop_invalid'))
   }
 
   async function analyze() {
@@ -51,7 +52,7 @@ export default function Upload({ base }: { base: string }) {
       if (!r.ok) throw new Error(`server returned ${r.status}`)
       setResult((await r.json()) as AnalyzeResult)
     } catch (e) {
-      setError(`Couldn't reach the backend at ${base}. Is it running / awake? (${(e as Error).message})`)
+      setError(t('backend_unreachable', { base, err: (e as Error).message }))
     } finally {
       setLoading(false)
     }
@@ -68,7 +69,7 @@ export default function Upload({ base }: { base: string }) {
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
     } catch {
-      setError('Clipboard blocked by the browser — use the download link instead.')
+      setError(t('clipboard_blocked'))
     }
   }
 
@@ -84,10 +85,10 @@ export default function Upload({ base }: { base: string }) {
             onDragLeave={() => setDragOver(false)}
             onDrop={onDrop}
           >
-            {file ? <strong>{file.name}</strong> : <span>Choose, drag &amp; drop, or paste an image/video…</span>}
+            {file ? <strong>{file.name}</strong> : <span>{t('drop_prompt')}</span>}
           </label>
           <button className="primary" disabled={!file || loading} onClick={analyze}>
-            {loading ? 'Analyzing…' : 'Analyze'}
+            {loading ? t('analyzing') : t('analyze')}
           </button>
         </div>
         {preview && !result && <img className="frame" src={preview} alt="preview" />}
@@ -98,12 +99,12 @@ export default function Upload({ base }: { base: string }) {
         <section className="card">
           {result.annotated && <img className="frame" src={`data:image/jpeg;base64,${result.annotated}`} alt="result" />}
           <h2>
-            {reads.length} plate{reads.length === 1 ? '' : 's'} read
-            {result.type === 'video' && result.frames ? ` · ${result.frames} frames scanned` : ''}
+            {t('plates_read', { n: reads.length })}
+            {result.type === 'video' && result.frames ? t('frames_scanned', { frames: result.frames }) : ''}
           </h2>
           {reads.length > 0 ? (
             <table>
-              <thead><tr><th>Plate</th><th>Region</th><th>Confidence</th></tr></thead>
+              <thead><tr><th>{t('th_plate')}</th><th>{t('th_region')}</th><th>{t('th_confidence')}</th></tr></thead>
               <tbody>
                 {reads.map((p, i) => (
                   <tr key={i}><td className="plate">{p.plate_text}</td><td>{p.region}</td><td>{Math.round(p.confidence * 100)}%</td></tr>
@@ -111,16 +112,13 @@ export default function Upload({ base }: { base: string }) {
               </tbody>
             </table>
           ) : (
-            <p className="muted">
-              No plate read confidently. Red boxes mark detected plate regions the model couldn't read
-              (too small / blurred / angled); green boxes are confident reads.
-            </p>
+            <p className="muted">{t('no_read')}</p>
           )}
           <div className="actions">
             {reads.length > 0 && (
-              <button className="ghost" onClick={copyCsv}>{copied ? '✓ Copied' : '⧉ Copy CSV'}</button>
+              <button className="ghost" onClick={copyCsv}>{copied ? t('copied') : t('copy_csv')}</button>
             )}
-            <a className="csv" href={`${base}/api/results.csv`} target="_blank" rel="noreferrer">⬇ Download results CSV</a>
+            <a className="csv" href={`${base}/api/results.csv`} target="_blank" rel="noreferrer">{t('download_csv')}</a>
           </div>
         </section>
       )}
