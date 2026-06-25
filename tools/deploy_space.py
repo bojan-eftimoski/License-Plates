@@ -22,6 +22,7 @@ def main():
     api.create_repo(repo_id, repo_type="space", space_sdk="docker", exist_ok=True)
     api.upload_folder(repo_id=repo_id, repo_type="space", folder_path=".",
                       allow_patterns=FILES,
+                      ignore_patterns=["**/__pycache__/**", "**/*.pyc"],
                       commit_message="Deploy classical MK ALPR backend")
     print(f"\nSpace: https://huggingface.co/spaces/{repo_id}")
     print(f"API:   https://{user}-{SPACE_NAME}.hf.space/api/health  (after the build finishes)")
