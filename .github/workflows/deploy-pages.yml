@@ -1,5 +1,8 @@
 name: Deploy frontend to GitHub Pages
 
+# Publishes the built frontend to the `gh-pages` branch (Pages Source = "Deploy from a branch
+# -> gh-pages -> /"). Uses plain git so it does NOT consume the Actions artifact-storage quota.
+
 on:
   push:
     branches: [main]
@@ -7,16 +10,14 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
 concurrency:
   group: pages
   cancel-in-progress: true
 
 jobs:
-  build:
+  build-deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -30,18 +31,12 @@ jobs:
       - run: npm run build
         working-directory: frontend
         env:
-          # Bake the live HF Space backend so the deployed app works without manual config.
           VITE_API_BASE: https://bojaN244-LicensePlates.hf.space
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: frontend/dist
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+      - name: Publish to gh-pages branch
+        run: |
+          cd frontend/dist
+          touch .nojekyll
+          git init -q -b gh-pages
+          git add -A
+          git -c user.email=ci@users.noreply.github.com -c user.name=ci commit -q -m "deploy frontend ${{ github.sha }}"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" gh-pages
