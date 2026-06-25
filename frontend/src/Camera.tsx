@@ -27,16 +27,31 @@ export default function Camera({ base }: { base: string }) {
 
   async function start() {
     setErr(null)
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setErr('Camera not available — open the HTTPS site (the github.io URL), not an http:// address. iOS blocks the camera on insecure pages.')
+      return
+    }
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment', width: { ideal: 1280 } }, audio: false,
-      })
+      let stream: MediaStream
+      try {
+        // soft 'ideal' rear-camera so it doesn't OverconstrainedError on odd devices
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false })
+      } catch (e) {
+        const n = (e as Error).name
+        if (n === 'OverconstrainedError' || n === 'NotFoundError' || n === 'TypeError')
+          stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+        else throw e
+      }
       const v = videoRef.current!
       v.srcObject = stream
       await v.play()
       setOn(true)
     } catch (e) {
-      setErr(`Camera unavailable: ${(e as Error).message}. iOS requires HTTPS (GitHub Pages) + camera permission.`)
+      const n = (e as Error).name
+      if (n === 'NotAllowedError')
+        setErr('Camera permission is blocked. On iPhone: tap “aA” in the Safari address bar → Website Settings → Camera → Allow, then reload. Also check Settings → Safari → Camera = “Ask”/“Allow” (not Deny).')
+      else
+        setErr(`Camera error: ${n || (e as Error).message}. Needs HTTPS + camera permission.`)
     }
   }
 
