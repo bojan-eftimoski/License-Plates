@@ -29,7 +29,7 @@ def test_valid_8char_with_digit_slot_letter_O_coerced_to_zero():
     text, region, conf, slotted = validate(cs)
     assert text == "SK9507BT"
     assert region == "SK"
-    assert conf == pytest.approx(0.9)
+    assert conf == pytest.approx(0.95)   # 0.5 format floor + 0.5*mean(0.9)
     assert [c.slot for c in slotted] == ["L", "L", "D", "D", "D", "D", "L", "L"]
 
 
@@ -38,7 +38,7 @@ def test_valid_3digit_legacy_plate():
     text, region, conf, slotted = validate(cs)
     assert text == "BT256BV"
     assert region == "BT"
-    assert conf == pytest.approx(0.9)
+    assert conf == pytest.approx(0.95)   # 0.5 format floor + 0.5*mean(0.9)
     assert [c.slot for c in slotted] == ["L", "L", "D", "D", "D", "L", "L"]
 
 
@@ -63,7 +63,7 @@ def test_letter_slot_digit_coerced_to_letter():
     text, region, conf, _ = validate(cs)
     assert text == "GE4514BO"
     assert region == "GE"
-    assert conf == pytest.approx(0.9)
+    assert conf == pytest.approx(0.95)   # 0.5 format floor + 0.5*mean(0.9)
 
 
 def test_banned_glyph_in_letter_slot_rejected():
@@ -80,7 +80,7 @@ def test_wrong_length_rejected():
     assert all(c.slot == "" for c in slotted)
 
 
-def test_confidence_is_weakest_link_min():
+def test_confidence_is_format_floor_plus_mean():
     cs = [
         CharResult("S", 0.95), CharResult("K", 0.80), CharResult("1", 0.99),
         CharResult("2", 0.70), CharResult("9", 0.99), CharResult("7", 0.99),
@@ -88,7 +88,8 @@ def test_confidence_is_weakest_link_min():
     ]
     text, _, conf, _ = validate(cs)
     assert text == "SK1297AS"
-    assert conf == pytest.approx(0.70)  # min over glyphs, valid -> *1.0
+    mean = (0.95 + 0.80 + 0.99 + 0.70 + 0.99 + 0.99 + 0.99 + 0.99) / 8
+    assert conf == pytest.approx(0.5 + 0.5 * mean)  # format floor + mean glyph confidence
 
 
 def test_confusable_maps_are_inverse():
@@ -120,5 +121,5 @@ def test_real_groundtruth_plates_validate_perfectly(plate, region, n_digits):
     text, reg, conf, slotted = validate(cs)
     assert text == plate
     assert reg == region
-    assert conf == pytest.approx(0.9)
+    assert conf == pytest.approx(0.95)   # 0.5 format floor + 0.5*mean(0.9)
     assert sum(c.slot == "D" for c in slotted) == n_digits

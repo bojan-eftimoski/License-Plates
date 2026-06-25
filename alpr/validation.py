@@ -5,8 +5,8 @@ format `LL DDD(D) LL` (2 region letters + 3-4 digits + 2 suffix letters). Each g
 mapped to its slot class and digit<->letter cross-confusions are coerced to the slot's
 class (a digit-slot 'O' becomes '0', a letter-slot '0' becomes 'O'). A plate is valid only
 when every slot coerces, the region code is in the 34-code whitelist, and no banned glyph
-(Q/W/X/Y) appears. Confidence is the weakest-link min over glyphs, gated to 0 if invalid
-(see spec 5.4). No deep learning, no Tesseract, no sklearn.
+(Q/W/X/Y) appears. Confidence is 0 when invalid; when valid it is a 0.5 floor (format+region
+is strong evidence) lifted by mean glyph confidence. No deep learning, no Tesseract, no sklearn.
 """
 from typing import Optional
 
@@ -61,7 +61,7 @@ def validate(chars: list[CharResult]):
     Returns (plate_text, region, confidence, slotted_chars):
       - plate_text: the joined coerced glyphs when valid, else None.
       - region:     the (coerced) first two letters when valid, else None.
-      - confidence: min per-glyph confidence * (1.0 if valid else 0.0).
+      - confidence: 0.0 if invalid; else 0.5 + 0.5 * mean per-glyph confidence.
       - slotted_chars: the same CharResult objects with `.slot` filled ('L'/'D').
     """
     template = _slot_template(len(chars))
@@ -70,8 +70,6 @@ def validate(chars: list[CharResult]):
     if template is not None:
         for c, slot in zip(chars, template):
             c.slot = slot
-
-    base_conf = min((c.confidence for c in chars), default=0.0)
 
     if template is None:
         return None, None, 0.0, chars
@@ -94,5 +92,12 @@ def validate(chars: list[CharResult]):
     else:
         region = None
 
-    confidence = base_conf * (1.0 if valid else 0.0)
+    if valid:
+        # Passing the strict LL DDD(D) LL format AND the 34-code region whitelist is itself
+        # strong evidence (garbage reads fail validation and return None above), so a valid
+        # plate gets a 0.5 floor lifted by mean per-glyph confidence -> [0.5, 1.0].
+        mean_conf = sum(c.confidence for c in chars) / len(chars)
+        confidence = 0.5 + 0.5 * mean_conf
+    else:
+        confidence = 0.0
     return plate_text, region, confidence, chars
