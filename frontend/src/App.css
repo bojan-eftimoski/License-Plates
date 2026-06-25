@@ -39,7 +39,19 @@ header .sub {
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: #8b90a0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
+.status {
+  font-style: normal;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 11px;
+}
+.status.ready { color: #22c55e; }
+.status.connecting { color: #f59e0b; }
+.status.offline { color: #ef4444; }
 .field input {
   background: #0d0f14;
   border: 1px solid #2b3142;
