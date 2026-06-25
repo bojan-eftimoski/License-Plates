@@ -90,6 +90,12 @@ header .sub {
   font-weight: 550;
   word-break: break-all;
 }
+.drop.over {
+  border-color: #3b82f6;
+  border-style: solid;
+  background: rgba(59, 130, 246, 0.08);
+  color: #e6e8ee;
+}
 
 button.primary {
   background: #3b82f6;
@@ -155,6 +161,23 @@ td.plate {
   border-radius: 8px;
   font-size: 14px;
 }
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+button.ghost {
+  background: #0d0f14;
+  border: 1px solid #2b3142;
+  color: #e6e8ee;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font: inherit;
+  font-weight: 550;
+  cursor: pointer;
+}
+button.ghost:hover { border-color: #3b82f6; }
 .csv {
   display: inline-block;
   color: #60a5fa;

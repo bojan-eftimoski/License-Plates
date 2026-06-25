@@ -5,13 +5,19 @@ import { useEffect, useRef, useState } from 'react'
  * we throttle frames to it (~2x/s); between detections each box GLIDES to its new target via
  * lerp and the recognized text LOCKS through multi-frame majority voting, giving an AR feel
  * without client-side CV. 2D only (no WebXR). iOS Safari needs HTTPS + camera permission.
+ *
+ * Boxes LINGER 3s after a plate leaves frame (time-based, independent of detection cadence)
+ * and fade out over the last 1.5s so the last reading stays readable.
  */
+const LINGER_MS = 3000 // keep a box this long after it was last detected
+const FADE_MS = 1500 // start fading this long before removal
+
 type Track = {
   x: number; y: number; w: number; h: number          // drawn (smoothed) box, in video px
   tx: number; ty: number; tw: number; th: number       // target box from the latest detection
   text: string | null
   votes: Record<string, number>
-  age: number                                          // detections since last seen
+  lastSeen: number                                     // Date.now() of the last matched detection
 }
 
 type Det = { bbox: number[]; text: string | null; conf: number }
@@ -24,48 +30,88 @@ export default function Camera({ base }: { base: string }) {
   const rafRef = useRef(0)
   const [on, setOn] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  const [starting, setStarting] = useState(false)
 
-  async function start() {
-    setErr(null)
-    if (!navigator.mediaDevices?.getUserMedia) {
-      setErr('Camera not available — open the HTTPS site (the github.io URL), not an http:// address. iOS blocks the camera on insecure pages.')
-      return
-    }
-    try {
-      let stream: MediaStream
-      try {
-        // soft 'ideal' rear-camera so it doesn't OverconstrainedError on odd devices
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false })
-      } catch (e) {
-        const n = (e as Error).name
-        if (n === 'OverconstrainedError' || n === 'NotFoundError' || n === 'TypeError')
-          stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false })
-        else throw e
-      }
-      const v = videoRef.current!
-      v.srcObject = stream
-      await v.play()
-      setOn(true)
-    } catch (e) {
-      const n = (e as Error).name
-      if (n === 'NotAllowedError')
-        setErr('Camera permission is blocked. On iPhone: tap “aA” in the Safari address bar → Website Settings → Camera → Allow, then reload. Also check Settings → Safari → Camera = “Ask”/“Allow” (not Deny).')
-      else
-        setErr(`Camera error: ${n || (e as Error).message}. Needs HTTPS + camera permission.`)
-    }
+  function attach(stream: MediaStream) {
+    const v = videoRef.current!
+    v.srcObject = stream
+    return v.play()
   }
 
-  function stop() {
+  // Try a sequence of constraint sets so the camera opens on ANY device. On a laptop the
+  // 'environment' hint is soft (ideal), so it still grabs the front cam; if a camera is busy
+  // (NotReadableError — common on Windows when Zoom/Teams/another tab holds it) we fall back
+  // to a plain request and then to each enumerated device, which can grab a different free cam.
+  async function start() {
+    setErr(null)
+    if (!window.isSecureContext) {
+      setErr('Camera needs a secure (HTTPS) page. Open the github.io URL, not an http:// address or IP.')
+      return
+    }
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setErr('This browser blocks camera access here. Use Safari (iOS) or Chrome/Edge (desktop) on the HTTPS site.')
+      return
+    }
+    setStarting(true)
+    stopStream() // release anything we might already hold
+
+    const attempts: MediaStreamConstraints[] = [
+      { video: { facingMode: { ideal: 'environment' } }, audio: false },
+      { video: true, audio: false },
+    ]
+    let lastErr: Error | null = null
+    for (const constraints of attempts) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia(constraints)
+        await attach(stream)
+        setOn(true); setStarting(false); return
+      } catch (e) {
+        lastErr = e as Error
+      }
+    }
+
+    // Last resort: try every enumerated camera by id — one may be free even if the default is busy.
+    try {
+      const cams = (await navigator.mediaDevices.enumerateDevices())
+        .filter((d) => d.kind === 'videoinput' && d.deviceId)
+      for (const cam of cams) {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: { deviceId: { exact: cam.deviceId } }, audio: false,
+          })
+          await attach(stream)
+          setOn(true); setStarting(false); return
+        } catch (e) { lastErr = e as Error }
+      }
+    } catch { /* enumerateDevices can throw on some browsers — fall through to the message */ }
+
+    setStarting(false)
+    const n = lastErr?.name
+    if (n === 'NotReadableError' || n === 'AbortError')
+      setErr('Camera is busy or blocked. Close other apps/tabs using it (Zoom, Teams, Windows Camera, Photo Booth), then check your OS camera privacy setting and retry. On Windows: Settings → Privacy & security → Camera → on.')
+    else if (n === 'NotAllowedError' || n === 'SecurityError')
+      setErr('Camera permission was denied. iPhone: tap "aA" in Safari\'s address bar → Website Settings → Camera → Allow, then reload. Desktop: click the camera icon in the address bar → Allow.')
+    else if (n === 'NotFoundError' || n === 'OverconstrainedError')
+      setErr('No camera was found on this device. Connect one (or use the Upload tab) and retry.')
+    else
+      setErr(`Camera error: ${n || lastErr?.message || 'unknown'}. Needs HTTPS + an available camera.`)
+  }
+
+  function stopStream() {
     const v = videoRef.current
     ;(v?.srcObject as MediaStream | null)?.getTracks().forEach((t) => t.stop())
     if (v) v.srcObject = null
+  }
+
+  function stop() {
+    stopStream()
     tracksRef.current = []
     setOn(false)
   }
 
   function ingest(dets: Det[]) {
+    const now = Date.now()
     const tracks = tracksRef.current
-    tracks.forEach((t) => (t.age += 1))
     for (const d of dets) {
       const [bx, by, bw, bh] = d.bbox
       const cx = bx + bw / 2, cy = by + bh / 2
@@ -76,17 +122,18 @@ export default function Camera({ base }: { base: string }) {
         if (dist < Math.max(bw, t.tw) && dist < bestDist) { best = t; bestDist = dist }
       }
       if (best) {
-        Object.assign(best, { tx: bx, ty: by, tw: bw, th: bh, age: 0 })
+        Object.assign(best, { tx: bx, ty: by, tw: bw, th: bh, lastSeen: now })
         if (d.text) {
           best.votes[d.text] = (best.votes[d.text] || 0) + 1
           best.text = Object.entries(best.votes).sort((a, b) => b[1] - a[1])[0][0]
         }
       } else {
         tracks.push({ x: bx, y: by, w: bw, h: bh, tx: bx, ty: by, tw: bw, th: bh,
-                      text: d.text, votes: d.text ? { [d.text]: 1 } : {}, age: 0 })
+                      text: d.text, votes: d.text ? { [d.text]: 1 } : {}, lastSeen: now })
       }
     }
-    tracksRef.current = tracks.filter((t) => t.age < 6)
+    // drop tracks not seen for LINGER_MS (time-based, so cadence-independent)
+    tracksRef.current = tracks.filter((t) => now - t.lastSeen < LINGER_MS)
   }
 
   // throttled backend detection
@@ -125,10 +172,16 @@ export default function Camera({ base }: { base: string }) {
         const sx = c.width / v.videoWidth, sy = c.height / v.videoHeight
         const ctx = c.getContext('2d')!
         ctx.clearRect(0, 0, c.width, c.height)
+        const now = Date.now()
         for (const t of tracksRef.current) {
+          const since = now - t.lastSeen
+          if (since > LINGER_MS) continue
+          // fade out over the last FADE_MS before removal so the final reading stays visible
+          const alpha = since <= LINGER_MS - FADE_MS ? 1 : Math.max(0, (LINGER_MS - since) / FADE_MS)
           t.x += (t.tx - t.x) * 0.35; t.y += (t.ty - t.y) * 0.35
           t.w += (t.tw - t.w) * 0.35; t.h += (t.th - t.h) * 0.35
           const x = t.x * sx, y = t.y * sy, w = t.w * sx, h = t.h * sy
+          ctx.globalAlpha = alpha
           ctx.lineWidth = 3
           ctx.strokeStyle = t.text ? '#22c55e' : '#ef4444'
           ctx.strokeRect(x, y, w, h)
@@ -140,6 +193,7 @@ export default function Camera({ base }: { base: string }) {
             ctx.fillStyle = '#06240f'
             ctx.fillText(t.text, x + 6, y - 8)
           }
+          ctx.globalAlpha = 1
         }
       }
       rafRef.current = requestAnimationFrame(draw)
@@ -157,10 +211,12 @@ export default function Camera({ base }: { base: string }) {
         <video ref={videoRef} playsInline muted autoPlay />
         <canvas ref={canvasRef} />
       </div>
-      <button className="primary" onClick={on ? stop : start}>{on ? 'Stop' : 'Start camera'}</button>
+      <button className="primary" onClick={on ? stop : start} disabled={starting}>
+        {starting ? 'Opening camera…' : on ? 'Stop' : 'Start camera'}
+      </button>
       <p className="muted">
         Point the rear camera at a Macedonian plate. Detection runs on the backend ~2×/s; the label glides
-        and locks via multi-frame voting. Works best on clear, close plates.
+        and locks via multi-frame voting, and lingers ~3s after the plate leaves frame. Works best on clear, close plates.
       </p>
     </section>
   )
