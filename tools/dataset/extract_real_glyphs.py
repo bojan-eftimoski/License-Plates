@@ -1,107 +1,89 @@
-"""Semi-automatically extract labeled real character glyphs from olavsplates close-up crops.
+"""Extract labeled real character glyphs from olavsplates close-ups via the PRODUCTION pipeline.
 
-These crops are tight, near-frontal plate images whose filename encodes the plate string
-(the label). For each: drop chromatic regions (blue NMK strip + red/orange badge) via an
-HSV saturation mask, Otsu-binarize, connected-component segment, order left-to-right, and
-ONLY if the glyph count equals the label length do we zip glyphs->characters and save them
-to data/templates/<CLASS>/ (source=real). The length check rejects bad segmentations so we
-never pollute the KNN set. This is a dataset tool, separate from the production alpr core.
+For each close-up (filename = ground-truth plate string) run the real alpr rectify + segment;
+where the glyph count matches the label length, zip glyphs->characters and save each (plus a
+few augmented variants, to give the scarce real samples weight) into data/templates/<CLASS>/.
+This mixes real-glyph appearance into the synthetic-trained KNN to close the synth->real gap.
+
+TRAINING-SAFE: olavsplates plates are NOT in the held-out eval (Platesmania + registracii1),
+so this introduces no leakage.
 """
 import csv
+import random
 import re
 from pathlib import Path
 
 import cv2
 import numpy as np
 
+from alpr.rectify import rectify
+from alpr.segmentation import segment
+from alpr.types import Candidate
+
 SRC = Path("data/raw/olavsplates")
 OUT = Path("data/templates")
-NORM, MARGIN = 32, 3
+AUG = 4                      # augmented variants per real glyph
 
 
-def parse_label(name: str):
+def _label(name: str):
     m = re.search(r"(n?mk)_([a-z0-9-]+?)(_close)?\.jpg$", name, re.I)
-    if not m:
-        return None
-    return re.sub(r"[^a-z0-9]", "", m.group(2), flags=re.I).upper()
+    return re.sub(r"[^a-z0-9]", "", m.group(2), flags=re.I).upper() if m else None
 
 
-def normalize(mask: np.ndarray):
-    ys, xs = np.where(mask > 0)
-    if len(xs) == 0:
-        return None
-    crop = mask[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
-    ch, cw = crop.shape
-    inner = NORM - 2 * MARGIN
-    s = inner / max(ch, cw)
-    rh, rw = max(1, int(round(ch * s))), max(1, int(round(cw * s)))
-    crop = cv2.resize(crop, (rw, rh), interpolation=cv2.INTER_AREA)
-    out = np.zeros((NORM, NORM), np.uint8)
-    y0, x0 = (NORM - rh) // 2, (NORM - rw) // 2
-    out[y0:y0 + rh, x0:x0 + rw] = crop
+def _augment(g: np.ndarray, rng: random.Random) -> np.ndarray:
+    out = g.copy()
+    M = cv2.getRotationMatrix2D((16, 16), rng.uniform(-7, 7), 1.0)
+    out = cv2.warpAffine(out, M, (32, 32))
+    r = rng.random()
+    if r < 0.30:
+        out = cv2.erode(out, np.ones((2, 2), np.uint8))
+    elif r > 0.70:
+        out = cv2.dilate(out, np.ones((2, 2), np.uint8))
+    if rng.random() < 0.5:
+        out = cv2.GaussianBlur(out, (3, 3), 0)
     return out
 
 
-def segment(img_bgr: np.ndarray):
-    h, w = img_bgr.shape[:2]
-    H = 128
-    img = cv2.resize(img_bgr, (int(w * H / h), H))
-    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    gray[hsv[:, :, 1] > 70] = 255          # drop chromatic strip + badge -> background
-    _, th = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)
-    th = cv2.morphologyEx(th, cv2.MORPH_OPEN, np.ones((2, 2), np.uint8))
-    n, lab, stats, _ = cv2.connectedComponentsWithStats(th, connectivity=8)
-    boxes = []
-    for i in range(1, n):
-        x, y, ww, hh, area = stats[i]
-        if not (0.35 * H <= hh <= 0.95 * H):
-            continue
-        if ww < 0.03 * H or ww > 0.9 * H or area < 30 or ww / hh > 1.3:
-            continue
-        boxes.append((x, y, ww, hh, i))
-    boxes.sort(key=lambda b: b[0])
-    glyphs = []
-    for x, y, ww, hh, i in boxes:
-        mask = ((lab[y:y + hh, x:x + ww] == i).astype(np.uint8)) * 255
-        g = normalize(mask)
-        if g is not None:
-            glyphs.append(g)
-    return glyphs
-
-
 def main():
-    rows = []
-    kept_plates = skipped = 0
+    rng = random.Random(7)
+    for old in OUT.glob("*/real_*.png"):
+        old.unlink()
+
+    kept = 0
+    real_rows = []
     for f in sorted(SRC.glob("*_close.jpg")):
-        label = parse_label(f.name)
-        img = cv2.imread(str(f))
-        if not label or img is None:
+        lab = _label(f.name)
+        im = cv2.imread(str(f))
+        if not lab or im is None:
             continue
-        glyphs = segment(img)
-        if len(glyphs) != len(label):
-            skipped += 1
-            print(f"  [skip] {f.name}: segmented {len(glyphs)} != label {len(label)} ({label})")
+        h, w = im.shape[:2]
+        rp = rectify(im, Candidate(bbox=(0, 0, w, h), score=1.0, cue="extract"))
+        glyphs = segment(rp.warp)
+        if len(glyphs) != len(lab):
             continue
-        kept_plates += 1
-        for ch, g in zip(label, glyphs):
+        kept += 1
+        for i, (ch, gl) in enumerate(zip(lab, glyphs)):
             cdir = OUT / ch
             cdir.mkdir(parents=True, exist_ok=True)
-            name = f"real_{label}_{ch}.png"
-            cv2.imwrite(str(cdir / name), g)
-            rows.append((f"{ch}/{name}", ch, "real"))
+            for n, v in enumerate([gl.norm] + [_augment(gl.norm, rng) for _ in range(AUG)]):
+                name = f"real_{lab}_{i}_{n}.png"
+                cv2.imwrite(str(cdir / name), v)
+                real_rows.append((f"{ch}/{name}", ch, "real"))
 
-    meta = OUT / "_meta.csv"
-    write_header = not meta.exists()
-    with meta.open("a", newline="", encoding="utf-8") as fh:
+    # regenerate _meta.csv (synthetic + real) for provenance
+    meta_rows = []
+    for d in sorted(p for p in OUT.iterdir() if p.is_dir()):
+        for png in sorted(d.glob("*.png")):
+            src = "real" if png.name.startswith("real_") else "synth"
+            meta_rows.append((f"{d.name}/{png.name}", d.name, src))
+    with (OUT / "_meta.csv").open("w", newline="", encoding="utf-8") as fh:
         w = csv.writer(fh)
-        if write_header:
-            w.writerow(["file", "class", "source"])
-        w.writerows(rows)
+        w.writerow(["file", "class", "source"])
+        w.writerows(meta_rows)
 
-    classes = sorted({r[1] for r in rows})
-    print(f"\nExtracted {len(rows)} real glyphs from {kept_plates} plates "
-          f"({skipped} skipped on length-check) covering {len(classes)} classes: {classes}")
+    classes = sorted({r[1] for r in real_rows})
+    print(f"extracted {kept} plates -> {len(real_rows)} real glyph images "
+          f"(base + {AUG}x aug) covering {len(classes)} classes: {classes}")
 
 
 if __name__ == "__main__":
