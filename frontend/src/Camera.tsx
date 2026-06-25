@@ -28,12 +28,14 @@ type Det = { bbox: number[]; text: string | null; conf: number }
 export default function Camera({ base, t }: { base: string; t: T }) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const stageRef = useRef<HTMLDivElement>(null)
   const tracksRef = useRef<Track[]>([])
   const busyRef = useRef(false)
   const rafRef = useRef(0)
   const [on, setOn] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [starting, setStarting] = useState(false)
+  const [fs, setFs] = useState(false)
 
   function attach(stream: MediaStream) {
     const v = videoRef.current!
@@ -107,10 +109,43 @@ export default function Camera({ base, t }: { base: string; t: T }) {
   }
 
   function stop() {
+    exitFs()
     stopStream()
     tracksRef.current = []
     setOn(false)
   }
+
+  // Fullscreen "AR" mode. iOS Safari has no element Fullscreen API, so the CSS-fixed `.fs`
+  // overlay is the real mechanism (works everywhere, keeps the canvas overlay on top of the
+  // video). Where the native API exists (desktop, Android) we ALSO request it to hide the
+  // browser chrome for a more immersive feel — if it rejects (iOS) the CSS overlay still wins.
+  function enterFs() {
+    setFs(true)
+    const el = stageRef.current as (HTMLElement & { webkitRequestFullscreen?: () => void }) | null
+    if (!el) return
+    try {
+      if (el.requestFullscreen) el.requestFullscreen().catch(() => {})
+      else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen()
+    } catch { /* ignore — the CSS .fs overlay already provides fullscreen */ }
+  }
+  function exitFs() {
+    setFs(false)
+    const d = document as Document & { webkitFullscreenElement?: Element; webkitExitFullscreen?: () => void }
+    if (d.fullscreenElement) d.exitFullscreen?.()
+    else if (d.webkitFullscreenElement) d.webkitExitFullscreen?.()
+  }
+
+  // Keep our `fs` flag in sync when the user leaves native fullscreen via Esc / system gesture.
+  useEffect(() => {
+    const d = document as Document & { webkitFullscreenElement?: Element }
+    const onChange = () => { if (!d.fullscreenElement && !d.webkitFullscreenElement) setFs(false) }
+    document.addEventListener('fullscreenchange', onChange)
+    document.addEventListener('webkitfullscreenchange', onChange)
+    return () => {
+      document.removeEventListener('fullscreenchange', onChange)
+      document.removeEventListener('webkitfullscreenchange', onChange)
+    }
+  }, [])
 
   function ingest(dets: Det[]) {
     const now = Date.now()
@@ -170,9 +205,13 @@ export default function Camera({ base, t }: { base: string; t: T }) {
     const draw = () => {
       const v = videoRef.current, c = canvasRef.current
       if (v && c && v.videoWidth) {
-        c.width = v.clientWidth
-        c.height = v.clientHeight
-        const sx = c.width / v.videoWidth, sy = c.height / v.videoHeight
+        // size & position the canvas exactly over the video's displayed box, so AR boxes stay
+        // aligned even when the video is letterboxed/centered (fullscreen) rather than filling.
+        const vw = v.clientWidth, vh = v.clientHeight
+        c.width = vw; c.height = vh
+        c.style.width = vw + 'px'; c.style.height = vh + 'px'
+        c.style.left = v.offsetLeft + 'px'; c.style.top = v.offsetTop + 'px'
+        const sx = vw / v.videoWidth, sy = vh / v.videoHeight
         const ctx = c.getContext('2d')!
         ctx.clearRect(0, 0, c.width, c.height)
         const now = Date.now()
@@ -210,13 +249,21 @@ export default function Camera({ base, t }: { base: string; t: T }) {
   return (
     <section className="card camera">
       {err && <div className="error">{err}</div>}
-      <div className="stage">
+      <div className={`stage${fs ? ' fs' : ''}`} ref={stageRef}>
         <video ref={videoRef} playsInline muted autoPlay />
         <canvas ref={canvasRef} />
+        {fs && (
+          <button className="fs-exit" onClick={exitFs} title={t('cam_exit')} aria-label={t('cam_exit')}>✕</button>
+        )}
       </div>
-      <button className="primary" onClick={on ? stop : start} disabled={starting}>
-        {starting ? t('cam_opening') : on ? t('cam_stop') : t('cam_start')}
-      </button>
+      <div className="cam-controls">
+        <button className="primary" onClick={on ? stop : start} disabled={starting}>
+          {starting ? t('cam_opening') : on ? t('cam_stop') : t('cam_start')}
+        </button>
+        {on && !fs && (
+          <button className="ghost" onClick={enterFs}>{t('cam_fullscreen')}</button>
+        )}
+      </div>
       <p className="muted">{t('cam_hint')}</p>
     </section>
   )

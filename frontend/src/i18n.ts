@@ -40,6 +40,8 @@ const en: Dict = {
   cam_opening: 'Opening camera…',
   cam_stop: 'Stop',
   cam_start: 'Start camera',
+  cam_fullscreen: '⛶ Fullscreen',
+  cam_exit: 'Exit fullscreen',
   cam_hint: 'Point the rear camera at a Macedonian plate. Detection runs on the backend ~2×/s; the label glides and locks via multi-frame voting, and lingers ~3s after the plate leaves frame. Works best on clear, close plates.',
 }
 
@@ -79,6 +81,8 @@ const mk: Dict = {
   cam_opening: 'Отворам камера…',
   cam_stop: 'Стоп',
   cam_start: 'Вклучи камера',
+  cam_fullscreen: '⛶ Цел екран',
+  cam_exit: 'Излез од цел екран',
   cam_hint: 'Насочи ја задната камера кон македонска табличка. Детекцијата работи на бекендот ~2×/сек; ознаката се движи и се заклучува преку гласање од повеќе рамки, и останува ~3 сек откако табличката ќе излезе од кадар. Најдобро работи на јасни, блиски таблички.',
 }
 
