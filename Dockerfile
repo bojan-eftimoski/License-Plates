@@ -1,6 +1,6 @@
 # Hugging Face Spaces (Docker SDK) — runs the FastAPI backend on port 7860.
 # Same image runs locally (docker build/run) and on Spaces unchanged.
-FROM python:3.11-slim
+FROM python:3.13-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
