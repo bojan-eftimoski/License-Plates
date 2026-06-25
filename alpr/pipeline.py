@@ -21,7 +21,7 @@ class ALPR:
         self.clf = GlyphClassifier().fit(imgs, labels)
         self.abstain_threshold = abstain_threshold
 
-    def read_plate(self, image_bgr: np.ndarray, max_candidates: int = 6) -> list[PlateResult]:
+    def read_plate(self, image_bgr: np.ndarray, max_candidates: int = 14) -> list[PlateResult]:
         results: list[PlateResult] = []
         for cand in detect_candidates(image_bgr)[:max_candidates]:
             try:
