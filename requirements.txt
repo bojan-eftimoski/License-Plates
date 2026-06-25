@@ -1,0 +1,15 @@
+# Graded core — the alpr/ inference path imports ONLY cv2 + numpy
+numpy
+opencv-python
+
+# Offline data-prep only (synthetic template rendering); never imported by alpr/ at inference
+Pillow
+
+# Web wrapper (web/ only; never imported by alpr/)
+fastapi
+uvicorn[standard]
+python-multipart
+websockets
+
+# Tests
+pytest

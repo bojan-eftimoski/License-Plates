@@ -1,0 +1,56 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Test / tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Runtime output
+out/
+results.csv
+*.log
+
+# Datasets: bulk/binary/third-party images — regenerable via tools/dataset/, not committed.
+# Tracked provenance/labels: data/README.md and data/eval/ground_truth.csv.
+data/raw/
+data/templates/
+data/demo/
+data/_scratch/
+
+# Instructor course materials (PDFs/images/videos) — copyright + bulk, not part of the app
+Materials/
+
+# Original media test inputs (large / third-party) — kept local, referenced via data manifests
+Images/
+Videos/
+
+# Claude Code harness internals
+.claude/
+
+# Uploaded research artifact (conclusions captured in data/README.md)
+/compass_artifact_*.md
+
+# Dev TLS certs (generated for phone HTTPS)
+*.pem
+certs/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Editors
+.idea/
+.vscode/
