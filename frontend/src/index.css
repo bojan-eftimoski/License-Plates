@@ -1,0 +1,6 @@
+:root {
+  color-scheme: dark;
+  font: 16px/1.5 system-ui, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: #0d0f14; color: #e6e8ee; }

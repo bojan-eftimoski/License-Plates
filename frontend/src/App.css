@@ -1,0 +1,159 @@
+.app {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
+}
+
+header {
+  text-align: center;
+  margin-bottom: 20px;
+}
+header h1 {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+header .sub {
+  margin: 6px 0 0;
+  color: #8b90a0;
+  font-size: 14px;
+}
+
+.card {
+  background: #161922;
+  border: 1px solid #242938;
+  border-radius: 14px;
+  padding: 18px;
+  margin-bottom: 18px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+.field span {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #8b90a0;
+}
+.field input {
+  background: #0d0f14;
+  border: 1px solid #2b3142;
+  border-radius: 8px;
+  color: #e6e8ee;
+  padding: 10px 12px;
+  font: inherit;
+  width: 100%;
+}
+
+.uploader {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+.uploader input[type='file'] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+.drop {
+  flex: 1 1 220px;
+  min-height: 46px;
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  border: 1px dashed #2b3142;
+  border-radius: 10px;
+  color: #8b90a0;
+  cursor: pointer;
+}
+.drop strong {
+  color: #e6e8ee;
+  font-weight: 550;
+  word-break: break-all;
+}
+
+button.primary {
+  background: #3b82f6;
+  color: #fff;
+  border: 0;
+  border-radius: 10px;
+  padding: 12px 22px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+button.primary:disabled {
+  background: #2b3142;
+  color: #6b7180;
+  cursor: not-allowed;
+}
+
+.frame {
+  width: 100%;
+  border-radius: 10px;
+  display: block;
+  margin: 4px 0 14px;
+  background: #000;
+}
+
+h2 {
+  font-size: 17px;
+  margin: 6px 0 12px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 14px;
+}
+th, td {
+  text-align: left;
+  padding: 9px 10px;
+  border-bottom: 1px solid #242938;
+}
+th {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #8b90a0;
+}
+td.plate {
+  font-family: ui-monospace, Consolas, monospace;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.muted {
+  color: #8b90a0;
+  font-size: 14px;
+}
+.error {
+  margin-top: 14px;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  color: #fca5a5;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 14px;
+}
+.csv {
+  display: inline-block;
+  color: #60a5fa;
+  text-decoration: none;
+  font-weight: 550;
+}
+.csv:hover { text-decoration: underline; }
+
+footer {
+  text-align: center;
+  color: #6b7180;
+  font-size: 12px;
+  margin-top: 24px;
+}
