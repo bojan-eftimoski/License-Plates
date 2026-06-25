@@ -16,18 +16,26 @@ LETTERS = list("ABCDEFGHIJKLMNOPRSTUVZ")        # A-Z minus Q, W, X, Y (22)
 CLASSES = list("0123456789") + LETTERS          # 32 Macedonian plate glyph classes
 
 
-def load_glyph_dataset(templates_dir: str):
-    """Return (imgs, labels) for every <CLASS>/*.png under templates_dir."""
+def load_glyph_dataset(templates_dir: str = "data/templates"):
+    """Return (imgs, labels). Prefers the <CLASS>/*.png dir (dev); falls back to the committed
+    `<templates_dir>.npz` artifact (deployment, e.g. HF Spaces, where the PNG dir is absent)."""
     imgs, labels = [], []
-    for cls in sorted(os.listdir(templates_dir)):
-        d = os.path.join(templates_dir, cls)
-        if not os.path.isdir(d):
-            continue
-        for f in glob.glob(os.path.join(d, "*.png")):
-            im = cv2.imread(f, cv2.IMREAD_GRAYSCALE)
-            if im is not None:
-                imgs.append(im)
-                labels.append(cls)
+    if os.path.isdir(templates_dir):
+        for cls in sorted(os.listdir(templates_dir)):
+            d = os.path.join(templates_dir, cls)
+            if not os.path.isdir(d):
+                continue
+            for f in glob.glob(os.path.join(d, "*.png")):
+                im = cv2.imread(f, cv2.IMREAD_GRAYSCALE)
+                if im is not None:
+                    imgs.append(im)
+                    labels.append(cls)
+    if imgs:
+        return imgs, labels
+    npz = templates_dir + ".npz"
+    if os.path.isfile(npz):
+        d = np.load(npz)
+        return [im for im in d["images"]], [str(s) for s in d["labels"]]
     return imgs, labels
 
 

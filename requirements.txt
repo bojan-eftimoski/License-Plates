@@ -1,15 +1,7 @@
-# Graded core — the alpr/ inference path imports ONLY cv2 + numpy
-numpy
-opencv-python
-
-# Offline data-prep only (synthetic template rendering); never imported by alpr/ at inference
-Pillow
-
-# Web wrapper (web/ only; never imported by alpr/)
-fastapi
-uvicorn[standard]
-python-multipart
-websockets
-
-# Tests
-pytest
+# Runtime deps for the FastAPI backend + graded alpr/ inference (pinned for HF Spaces).
+# The graded core uses only cv2 + numpy; headless OpenCV avoids GUI libs on a server.
+numpy==2.5.0
+opencv-python-headless==4.13.0.92
+fastapi==0.138.0
+uvicorn[standard]==0.49.0
+python-multipart==0.0.32
