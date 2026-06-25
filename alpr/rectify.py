@@ -97,5 +97,5 @@ def rectify(image_bgr: np.ndarray, candidate: Candidate) -> RectifiedPlate:
     quad = np.array([[x0, y0], [x1, y0], [x1, y1], [x0, y1]], np.float32)
     crop_aspect = (x1 - x0) / float(max(1, y1 - y0))
     ok = (float(cv2.cvtColor(warp, cv2.COLOR_BGR2GRAY).std()) >= 5.0
-          and (bb is not None or crop_aspect >= 2.0))   # reject non-plate-shaped inputs
+          and (bb is not None or crop_aspect >= 1.7))   # reject non-plate-shaped inputs
     return RectifiedPlate(warp=warp, quad=quad, ok=ok)
